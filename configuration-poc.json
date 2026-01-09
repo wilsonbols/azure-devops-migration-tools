@@ -1,0 +1,75 @@
+{
+  "$schema": "https://devopsmigration.io/schema/configuration.schema.json",
+  "Serilog": {
+    "MinimumLevel": "Information"
+  },
+  "MigrationTools": {
+    "Version": "16.3",
+    "Endpoints": {
+      "Source": {
+        "EndpointType": "AzureDevOpsEndpoint",
+        "Collection": "https://dev.azure.com/cshdevops",
+        "Organisation": "https://dev.azure.com/cshdevops",
+        "Project": "Process Template Sync",
+        "Authentication": {
+          "AuthenticationMode": "AccessToken",
+          "AccessToken": "YOUR_ACCESS_TOKEN_HERE"
+        },
+        "AuthenticationMode": "AccessToken",
+        "AccessToken": "YOUR_ACCESS_TOKEN_HERE",
+        "ReflectedWorkItemIdField": "Custom.ReflectedWorkItemId"
+      },
+      "Target": {
+        "EndpointType": "AzureDevOpsEndpoint",
+        "Collection": "https://dev.azure.com/GoCo-POC",
+        "Organisation": "https://dev.azure.com/GoCo-POC",
+        "Project": "Test Process Sync",
+        "Authentication": {
+          "AuthenticationMode": "AccessToken",
+          "AccessToken": "YOUR_ACCESS_TOKEN_HERE"
+        },
+        "AuthenticationMode": "AccessToken",
+        "AccessToken": "YOUR_ACCESS_TOKEN_HERE",
+        "ReflectedWorkItemIdField": "Custom.ReflectedWorkItemId"
+      }
+    },
+    "Processors": [
+      {
+        "ProcessorType": "TfsWorkItemMigrationProcessor",
+        "Enabled": false,
+        "WIQLQuery": "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @TeamProject ORDER BY [System.ChangedDate] desc",
+        "FixHtmlAttachmentLinks": true,
+        "WorkItemCreateRetryLimit": 5,
+        "FilterWorkItemsThatAlreadyExistInTarget": false,
+        "GenerateMigrationComment": true,
+        "SourceName": "Source",
+        "TargetName": "Target"
+      },
+      {
+        "ProcessorType": "ProcessDefinitionProcessorOptions",
+        "Enabled": true,
+        "Processes": {"CSH Agile v2 with PBI":["CSH Agile v2 with PBI.Epic"]},
+        "ProcessMaps": {"CSH Agile v2 with PBI": "CSH Agile v2 with PBI"},
+        "UpdateProcessDetails": false,
+        "MaxDegreeOfParallelism": 0,
+        "SourceName": "Source",
+        "TargetName": "Target"
+      }
+    ],
+    "CommonTools": {
+      "FieldMappingTool": {
+        "Enabled": true,
+        "FieldMaps": [
+          {
+            "FieldMapType": "FieldLiteralMap",
+            "targetField": "Custom.MigratedFrom",
+            "value": "netcorevip",
+            "ApplyTo": [
+              "Feature"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

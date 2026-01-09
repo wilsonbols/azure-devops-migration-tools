@@ -16,6 +16,7 @@ using MigrationTools.Processors.Infrastructure;
 using MigrationTools.Options;
 using Microsoft.Extensions.Options;
 using MigrationTools.Tools;
+using Microsoft.TeamFoundation.Common;
 
 namespace MigrationTools.Processors
 {
@@ -121,9 +122,10 @@ namespace MigrationTools.Processors
             try
             {
                 // Lets first start by taking inventory of what we have in source and target, in parallel.
-                await Task.WhenAll(
-                    BuildModel(SourceModel, Source, true),
-                    BuildModel(TargetModel, Target, false));
+                await BuildModel(TargetModel, Target, false);
+                await BuildModel(SourceModel, Source, true);
+                    
+               
                 /*
                 // Comment out the below for Synchronous model loading - Usually for debugging purposes
                 await BuildModel(TargetModel, Target, false);
@@ -167,11 +169,11 @@ namespace MigrationTools.Processors
 
             foreach (var sourceBehavior in sourceProc.WorkItemBehaviors)
             {
-                if (sourceBehavior.Customization != "system") // system cannot be customized.. just skip it
+                if (sourceBehavior.Customization != "system" && !sourceBehavior.ReferenceName.StartsWith("System.")) // system cannot be customized.. just skip it
                 {
-                    await SyncDefinitionType(TargetModel.WorkItemBehaviors, sourceBehavior,
-                        TargetModel.WorkItemBehaviors.Values.FirstOrDefault(x => x.ReferenceName == sourceBehavior.ReferenceName),
-                        targetProc.Process.Id);
+                    //await SyncDefinitionType(TargetModel.WorkItemBehaviors, sourceBehavior,
+                    //    TargetModel.WorkItemBehaviors.Values.FirstOrDefault(x => x.ReferenceName == sourceBehavior.ReferenceName),
+                    //    targetProc.Process.Id);
                 }
             }
 
@@ -186,6 +188,11 @@ namespace MigrationTools.Processors
         private async Task SyncWorkItemType(WorkItemTypeModel sourceWit, string processId)
         {
             var targetWit = TargetModel.WorkItemTypes.ContainsKey(sourceWit.WorkItemType.Name) ? TargetModel.WorkItemTypes[sourceWit.WorkItemType.Name] : new();
+
+            //TODO: 在更新目标组织的模板时，如果目标工作项类型是系统自带工作项，总是报错需要解决 
+            if (targetWit.WorkItemType != null && !targetWit.WorkItemType.ReferenceName.IsNullOrEmpty() && targetWit.WorkItemType.ReferenceName.StartsWith("Microsoft.VSTS.WorkItemTypes."))
+                return;
+
             targetWit.WorkItemType = await Target.SyncDefinition(sourceWit.WorkItemType, targetWit.WorkItemType, processId);
 
             // When you create a new WIT you need to go get the default states & fields that come after it gets created
@@ -509,7 +516,7 @@ namespace MigrationTools.Processors
                             WorkItemTypes = new List<WorkItemTypeModel>()
                         });
                     }
-
+                    
                     model.ProcessDefinitions[mappedProcName].WorkItemBehaviors = (await endpoint.GetApiDefinitionsAsync<WorkItemBehavior>(new string[] { proc.Id })).ToList();
                     model.ProcessDefinitions[mappedProcName].WorkItemBehaviors.ForEach(b => {
                         if (!model.WorkItemBehaviors.ContainsKey(b.Id)) {
@@ -520,12 +527,15 @@ namespace MigrationTools.Processors
                     #region Build Work Item Types data ...
 
                     var procWits = (await endpoint.GetApiDefinitionsAsync<WorkItemType>(new string[] { proc.Id }, singleDefinitionQueryString: "$expand=All"));
-                    procWits = procWits.Where(x => Options.Processes[processFilter].Any(a => a == "*"
-                            || x.Name.Equals(a, StringComparison.OrdinalIgnoreCase)));
+                    //procWits = procWits.Where(x => Options.Processes[processFilter].Any(a => a == "*"
+                    //        || x.Name.Equals(a, StringComparison.OrdinalIgnoreCase)));
+                   
                     if (procWits != null && procWits.Count() > 0)
                     {
                         foreach (var wit in procWits)
                         {
+                            if(wit.ReferenceName.StartsWith("Microsoft.VSTS.WorkItemTypes.") || wit.Customization != "custom")
+                                continue;
                             if (!model.WorkItemTypes.ContainsKey(wit.Name))
                             {
                                 model.WorkItemTypes.Add(wit.Name, new WorkItemTypeModel()
@@ -542,9 +552,16 @@ namespace MigrationTools.Processors
                                 };
                             }
 
+                            if (!warnOnMissing)
+                                continue;
+
                             #region --- Loading Wit Type Details ---
+                            await LoadLayout(model, model.WorkItemTypes[wit.Name], endpoint, proc.Id);
+
+                            if (warnOnMissing && model.WorkItemTypes[wit.Name].Layout == null)
+                                continue;
+
                             await Task.WhenAll(
-                                Task.Run(async () => await LoadLayout(model, model.WorkItemTypes[wit.Name], endpoint, proc.Id)),
                                 Task.Run(async () => await LoadWorkItemFields(model, model.WorkItemTypes[wit.Name].WorkItemType, endpoint, proc.Id)),
                                 Task.Run(async () =>
                                 {
@@ -561,9 +578,11 @@ namespace MigrationTools.Processors
                                     model.WorkItemTypes[wit.Name].Behaviors =
                                         (await endpoint.GetApiDefinitionsAsync<WorkItemTypeBehavior>(new string[] { proc.Id, wit.Id })).ToDictionary(x => x.Id, x => x);
                                 })
-                            );
+                            );                            
                             #endregion
                         }
+                        if(warnOnMissing)
+                            model.WorkItemTypes = model.WorkItemTypes.Where(wit => wit.Value.Layout != null).ToDictionary(wit => wit.Key, wit => wit.Value);
                     }
                     #endregion
                 }
@@ -589,7 +608,16 @@ namespace MigrationTools.Processors
         }
         private async Task LoadLayout(ProcessorModel model, WorkItemTypeModel wit, AzureDevOpsEndpoint endpoint, string processId)
         {
-            wit.Layout = (await endpoint.GetApiDefinitionAsync<WorkItemLayout>(new string[] { processId, wit.WorkItemType.ReferenceName }));
+            try
+            {
+                wit.Layout = (await endpoint.GetApiDefinitionAsync<WorkItemLayout>(new string[] { processId, wit.WorkItemType.ReferenceName }));
+            }
+            catch (Exception e)
+            {
+                return;
+                Console.WriteLine(e.ToString());
+            }
+            
             foreach (var page in wit.Layout.Pages)
             {
                 var pageKey = $"{wit.WorkItemType.Name}::{page.Label}";

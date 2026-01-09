@@ -1,7 +1,8 @@
 {
   "profiles": {
     "empty": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": " execute --config C:\\Users\\croco\\Documents\\Gits\\azure-devops-migration-tools\\configuration-demo.json --skipVersionCheck"
     },
     "Execute -noconfig": {
       "commandName": "Project",
