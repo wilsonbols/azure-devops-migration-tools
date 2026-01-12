@@ -49,11 +49,15 @@ switch ($env:RUNNER_OS)
 {
     "Windows" {
         Write-Output "Detected Windows"
-        $installedStuff = choco list -i 
-        if (($installedStuff -like "*7zip*").Count -eq 0) {
-        Write-Output "Installing 7zip"
-        choco install 7zip --confirm --accept-license -y
-        } else { Write-Output "Detected 7zip"}
+        if (Get-Command choco -ErrorAction SilentlyContinue) {
+            $installedStuff = choco list -i
+            if (($installedStuff -like "*7zip*").Count -eq 0) {
+                Write-Output "Installing 7zip"
+                choco install 7zip --confirm --accept-license -y
+            } else { Write-Output "Detected 7zip"}
+        } else {
+            Write-Output "Chocolatey not found - skipping 7zip installation"
+        }
         break;
     }
     "Linux" {
@@ -101,8 +105,14 @@ if ($foundFiles -eq $null) {
 }
 $foundFiles
 Write-Output "----------------------------------------"
-# Create Zip
-7z a -tzip  $OutputFullName $outfolder/MigrationTools/**
+# Create Zip using PowerShell Compress-Archive as fallback
+if (Get-Command 7z -ErrorAction SilentlyContinue) {
+    Write-Output "Using 7z to create zip"
+    7z a -tzip $OutputFullName $outfolder/MigrationTools/**
+} else {
+    Write-Output "Using PowerShell Compress-Archive to create zip (7z not found)"
+    Compress-Archive -Path "$outfolder/MigrationTools/*" -DestinationPath $OutputFullName -Force
+}
 Write-Output "----------------------------------------"
 # Cleanup
 Remove-Item -Path "$outfolder/MigrationTools" -Recurse -Force
