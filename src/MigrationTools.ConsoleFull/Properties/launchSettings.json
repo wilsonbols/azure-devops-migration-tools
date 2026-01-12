@@ -1,7 +1,8 @@
 {
   "profiles": {
     "empty": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": "execute --config C:\\Users\\croco\\Documents\\Gits\\migration-configs\\configuration-demo-pipeline.json --skipVersionCheck"
     },
     "Execute -noconfig": {
       "commandName": "Project",
